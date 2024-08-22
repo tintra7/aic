@@ -6,7 +6,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import sys
+from tqdm import tqdm
 
+index_type = "Flat" # 
 
 def peek_features_attributes(h5file):
     with h5py.File(h5file, 'r') as f:
@@ -23,36 +25,35 @@ def load_features(hdf5_file):
 
 def create(args):
     # Create new indexing
-    print(args.index_file)
+
     if not args.force and os.path.exists(args.index_file):
         print("Index has exist, skipping creation")
         return
     
-    features_files = Path(args.features_dir).glob('*/*.h5')
+    features_files = Path(args.features_dir).glob('*/*.hdf5')
     features_files = sorted(features_files)
-    print(len(features_files))
+
     ids = []
     feature_vector = []
-    for hdf5_file in features_files:
+    print(f"Loading {len(features_files)} feature files")
+    for hdf5_file in tqdm(features_files):
         ids_and_feature = load_features(hdf5_file)
         ids.extend(ids_and_feature[0])
         feature_vector.extend(ids_and_feature[1])
     feature_vector = np.array(feature_vector).astype(np.float32)
-    pd.DataFrame({"frame_id": ids}, index=np.arange(0, len(ids))).to_csv("frame_id.csv", index=False) 
-    print(feature_vector.shape)
+    pd.DataFrame({"frame_id": ids}).to_csv("frame_id.csv", index=False) 
     dim = peek_features_attributes(features_files[0])
 
-    index_type = 'Flat' # Change this
-
-    metric = faiss.METRIC_INNER_PRODUCT
-    index = faiss.index_factory(dim, index_type, metric)
+    
+    index = faiss.IndexFlatIP(dim)
     
 
+    print("Number of feature vectors:", feature_vector.shape)
     if not index.is_trained and hasattr(index, 'train'):
+        print("Training index")
         index.train(feature_vector)
-    
     index.add(feature_vector)
-
+    print("Store index")
     faiss.write_index(index, str(args.index_file))
 
 def main():

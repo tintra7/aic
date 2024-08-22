@@ -165,3 +165,4 @@ cython_debug/
 minio-data
 data
 sift
+demo.py

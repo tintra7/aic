@@ -43,9 +43,7 @@ def create(args):
     feature_vector = np.array(feature_vector).astype(np.float32)
     pd.DataFrame({"frame_id": ids}).to_csv("frame_id.csv", index=False) 
     dim = peek_features_attributes(features_files[0])
-
-    
-    index = faiss.IndexFlatIP(dim)
+    index = faiss.index_factory(dim, index_type)
     
 
     print("Number of feature vectors:", feature_vector.shape)

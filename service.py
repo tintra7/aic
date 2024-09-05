@@ -8,7 +8,9 @@ import torch
 import clip
 import time
 from pymongo.mongo_client import MongoClient
+from dotenv import load_dotenv
 
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -19,7 +21,7 @@ class FaissWrapper:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model, _ = clip.load("ViT-B/32", device=self.device)
         self.model.eval()
-        uri = "mongodb+srv://tintra:Tintra2711@bettergpuwin.ghtqx.mongodb.net/?retryWrites=true&w=majority&appName=BetterGPUWin"
+        uri = os.environ.get("URI", "")
         client = MongoClient(uri)
         self.collection = client['vbs']['keyframe']
 

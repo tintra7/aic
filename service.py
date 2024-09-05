@@ -7,6 +7,8 @@ from flask import Flask, request, jsonify
 import torch
 import clip
 import time
+from pymongo.mongo_client import MongoClient
+
 
 app = Flask(__name__)
 
@@ -17,8 +19,11 @@ class FaissWrapper:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model, _ = clip.load("ViT-B/32", device=self.device)
         self.model.eval()
+        uri = "mongodb+srv://tintra:Tintra2711@bettergpuwin.ghtqx.mongodb.net/?retryWrites=true&w=majority&appName=BetterGPUWin"
+        client = MongoClient(uri)
+        self.collection = client['vbs']['keyframe']
 
-    def search(self, query, k=10):
+    def search_with_clip(self, query, k):
         text_tokens = clip.tokenize([query]).to(self.device)
         with torch.no_grad():
             text_features = self.model.encode_text(text_tokens).float()
@@ -30,22 +35,54 @@ class FaissWrapper:
         valid = I >= 0
         I = I[valid]
         D = D[valid]
-        return self.df.iloc[I]['frame_id'].tolist()  # Return as a list
+        return pd.DataFrame({"frame_id": I, "distance": D})  # Fixed the DataFrame
+
+    def fuzzy_matching(self, query: str, k):
+        result = self.collection.aggregate([
+            {
+                "$search": {
+                    "index": "default",
+                    "text": {
+                        "query": query,
+                        "path": "text",
+                        "fuzzy": {}
+                    }   
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "text": 1,
+                    "score": { "$meta": "searchScore" }
+                }
+            }
+        ])
+
+        # Convert the cursor to a list of dictionaries
+        result = list(result)
+        return pd.DataFrame(result).sort_values(by='score', ascending=False).head(k)
+
+    def search(self, query, k=1000):
+        df_clip = self.search_with_clip(query=query, k=k)
+        df_keyword = self.fuzzy_matching(query=query, k=k)
+        df = pd.merge(df_clip, df_keyword, left_on='frame_id', right_on='_id', how='outer').fillna(value=0)
+        df['final_score'] = 0.5 * df['score'] + 0.5 * df['distance']
+        df = df.sort_values(by='final_score', ascending=False)
+        return df['frame_id'].tolist()[:k]  # Return as a list, fixed values() method
+
 
 def load_index():
     index_path = './data/index/faiss.index'
     print("Loading index")
     if os.path.exists(index_path):
         index = faiss.read_index(index_path)
-        
         return FaissWrapper(index)
-    
     else:
         raise FileNotFoundError(f"Index file not found at {index_path}")
 
 try:
     index = load_index()
-    print("Load index successfull")
+    print("Load index successful")
 except FileNotFoundError as e:
     print(e)
     index = None
